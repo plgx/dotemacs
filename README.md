@@ -11,4 +11,4 @@ Esta es una versión nueva.
 
 Solo incluye un línea, por ahora, y no lo cargué aquí como archivo
 
-(setq byte-compile-warnings '(cl-functions))
+     (setq byte-compile-warnings '(cl-functions))
