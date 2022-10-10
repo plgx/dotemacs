@@ -26,4 +26,5 @@ Este repositorio de mis archivos de configuración de Emacs me parece muy útil.
 Tendré que aprender a usarlo para hacer más eficiente my ´workflow´
 - desde la terminal
 - jalar y empujar (pull & push)
+- utilizar 'branches' (ramas, derivaciones?)
 - etc.
