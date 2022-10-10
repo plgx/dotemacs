@@ -1,0 +1,1539 @@
+#+STARTUP: overview hidestars
+
+* Para buscar bugs
+  Estos dos elementos me ayudan a debuguear Emacs.  
+  1. Uno permite observar visualmente hasta dónde se está cargando el
+     init (lo dejé en Emacs Config>Aspecto>Dividir pantalla
+     verticalmente)
+  2. El otro permite volver a cargar el archivo init desde cualquier
+     buffer
+** Reload emacs
+   tras editar este archivo, ;; reload .emacs file
+   tambien se puede algo asi como eval-this-buffer 
+   pero prefiero la mía
+
+   #+BEGIN_SRC emacs-lisp
+     (defun reload-dotemacs-file ()
+       "reload your .emacs file"
+       (interactive)
+       (load-file "~/.emacs.d/init.el")
+       )
+   #+END_SRC
+** COMMENT Quitar mensaje molesto
+   Al inicio, Emacs revisa la compatibilidad de diferentes paquetes.
+   Este ya no funciona con Emacs igual o mayor a 27.1.  A ver si esto
+   nos quita el molesto mensaje del área echo de Emacs al iniciar
+
+   "Package cl is deprecated"
+   Esto no funciona (setq byte-compile-warnings '(cl-functions))
+
+   (require 'loadhist)
+   (file-dependents (feature-file 'cl))
+
+   #+BEGIN_SRC emacs-lisp
+     (defun sanityinc/add-subdirs-to-load-path (parent-dir)
+       "Add every non-hidden subdir of PARENT-DIR to `load-path'."
+       (let ((default-directory parent-dir))
+	 (setq load-path
+	       (append
+		(cl-remove-if-not
+		 #'file-directory-p
+		 (directory-files (expand-file-name parent-dir) t "^[^\\.]"))
+		load-path))))
+   #+END_SRC
+* Emacs Config
+** Package repositories
+   Comentados, pero los podría regresar
+
+   (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+   (add-to-list 'package-archives '("marmalade" . "http://marmalade-repo.org/packages/") t)
+   (add-to-list 'package-archives '("gnu" . "https://elpa.gnu.org/packages/") t)
+   (add-to-list 'package-archives '("org" . "https://orgmode.org/elpa/") t)
+
+   #+BEGIN_SRC emacs-lisp
+     (when (and (equal emacs-version "27.2")
+	   (eql system-type 'darwin))
+     (setq gnutls-algorithm-priority "NORMAL:-VERS-TLS1.3"))
+
+     (require 'package)
+     (add-to-list 'package-archives '("melpa-stable" . "https://stable.melpa.org/packages/") t)
+     (add-to-list 'package-archives '("nongnu" . "https://elpa.nongnu.org/nongnu/") t)
+     (unless package-archive-contents    ;; Refresh the packages descriptions
+       (package-refresh-contents))
+     (setq package-load-list '(all))     ;; List of packages to load
+     (unless (package-installed-p 'org)  ;; Make sure the Org package is
+       (package-install 'org))           ;; installed, install it if not
+     ;;  (package-initialize)                ;; Initialize & Install Package
+     ;; Emacs me reporta un warning (Unnecesary call to package-initialize in init file)
+   #+END_SRC
+** De base
+   #+BEGIN_SRC emacs-lisp
+     (global-hl-line-mode t) ; Highlights the current cursor line
+     (display-time-mode 1)
+     (savehist-mode 1) ;; Save minibuffer history
+     (add-hook 'before-save-hook 'time-stamp) ;; Place timestamp when called for
+     (fset 'yes-or-no-p 'y-or-n-p)
+     (global-set-key (kbd "<f5>") 'revert-buffer)
+   #+END_SRC
+** Silencio - No dinging
+   #+BEGIN_SRC emacs-lisp
+     (setq visible-bell nil)
+     (setq ring-bell-function '(lambda ()
+				 ;; (load-theme 'tsdh-dark)
+				 ))
+   #+END_SRC
+** Autosaves y backups
+   from emacs wiki 
+   this could be done through customizing group: Backup
+   This comes from http://snarfed.org/gnu_emacs_backup_files
+   Put autosave files (ie #foo#) and backup files (ie foo~) in
+   ~/.emacs.d/.
+   ver luego esta pagina
+   http://www.chemie.fu-berlin.de/chemnet/use/info/elisp/elisp_24.html
+   #+BEGIN_SRC emacs-lisp
+     (setq
+      backup-by-copying t      ; don't clobber symlinks
+      backup-directory-alist
+      '((".*" . "~/.emacs.d/backups/"))    ; don't litter my fs tree
+      delete-old-versions t
+      kept-new-versions 10
+      kept-old-versions 2
+      version-control t       ; use versioned backups
+      )
+   #+END_SRC
+
+** My paths
+   #+BEGIN_SRC emacs-lisp
+     (add-to-list 'load-path "~/.emacs.d/site-lisp")
+     (add-to-list 'load-path "~/.emacs.d/lisp")
+     (add-to-list 'load-path "~/.emacs.d/elpa/")
+     (add-to-list 'load-path "~/.emacs.d/plgx-configs/")
+     (add-to-list 'load-path "/usr/local/share/emacs/site-lisp/")
+     (add-to-list 'load-path "/usr/local/Cellar/poppler/0.81.0/bin")
+   #+END_SRC
+
+** Recent files list
+   #+BEGIN_SRC emacs-lisp
+     (require 'recentf)
+     (recentf-mode 1)
+     (setq recentf-max-menu-items 40)
+     (global-set-key "\C-x\ \C-r" 'recentf-open-files)
+     
+     (let ((default-directory "~/.emacs.d/lisp/"))
+       (normal-top-level-add-subdirs-to-load-path))
+     (let ((default-directory "~/.emacs.d/site-lisp/"))
+       (normal-top-level-add-subdirs-to-load-path))
+   #+END_SRC
+** Minibuffer extendido
+*** Vertico
+    Me enteré por https://systemcrafters.cc/emacs-tips/streamline-completions-with-vertico/
+#+BEGIN_SRC emacs-lisp
+  (use-package vertico
+    :ensure t
+    :init
+    (vertico-mode)
+    :custom
+    (vertico-cycle t))
+  
+  (use-package savehist
+    :init
+    (savehist-mode))
+  
+  (use-package marginalia
+    :after vertico
+    :ensure t
+    :custom
+    (marginalia-annotators '(marginalia-annotators-heavy marginalia-annotators-light nil))
+    :init
+    (marginalia-mode))
+#+END_SRC
+
+*** Info look
+    InfoLook. Da informacion en el mini bufer en tiempo real para
+    diversos major modes, incluyendo latex-mode
+    #+BEGIN_SRC emacs-lisp
+      (require 'info-look)
+      (info-lookup-add-help
+       :mode 'latex-mode
+       :regexp ".*"
+       :parse-rule "\\\\?[a-zA-Z]+\\|\\\\[^a-zA-Z]"
+       :doc-spec '(("(latex2e)Concept Index")
+		   ("(latex2e)Command Index")))
+    #+END_SRC
+*** COMMENT Eldoc
+   Tendría que escoger entre Eldoc e InfoLook.  Voy a dejar el segundo
+   y luego veo.
+
+    A very simple but effective thing, eldoc-mode is a MinorMode which
+    shows you, in the echo area, the argument list of the function call
+    you are currently writing. Very handy. By NoahFriedman. Part of
+    Emacs.
+    #+BEGIN_SRC emacs-lisp
+      (add-hook 'emacs-lisp-mode-hook 'turn-on-eldoc-mode)
+      (add-hook 'lisp-interaction-mode-hook 'turn-on-eldoc-mode)
+      (add-hook 'ielm-mode-hook 'turn-on-eldoc-mode)
+    #+END_SRC
+** Coding system and input method
+   Coding system: UTF 8 
+   y teclados para
+   Español, inglés, francés y árabe
+
+   Cuando logré esto estuve feliz porque desde entonces puedo escribir
+   en los idiomas que quiera.  Ahora con este init en org, también
+   puedo poner acentos en este tipo de comentarios.
+*** utf-8 (coding system)
+   ¿lo puedo llamar con C-\ ? Tengo que revisar
+    El Latin 1 lo quiero para escribir, no para codificar, así que ahora
+    fijo el coding system en UTF8
+    #+BEGIN_SRC emacs-lisp
+      (setq utf-translate-cjk-mode nil) ; disable CJK coding/encoding (Chinese/Japanese/Korean characters)
+      (set-language-environment 'utf-8)
+      ;;  (set-keyboard-coding-system 'utf-8-mac) ; For old Carbon emacs on OS X only
+      (setq locale-coding-system 'utf-8)
+      (set-default-coding-systems 'utf-8)
+      (set-terminal-coding-system 'utf-8)
+      (set-selection-coding-system
+       (if (eq system-type 'windows-nt) 'utf-16-le ;; https://rufflewind.com/2014-07-20/pasting-unicode-in-emacs-on-windows
+	 'utf-8
+	 )) 
+      (prefer-coding-system 'utf-8)
+      (modify-coding-system-alist 'file "\\.sjs\\'" 'shift_jis)
+    #+END_SRC
+*** Latin 1 (input method)
+Latin 1 para poner acentos, diéresis y tildes donde me de la gana
+    #+BEGIN_SRC emacs-lisp
+      (add-hook 'text-mode-hook 
+		(lambda () "Defaults for text modes"
+		  ;; flyspell mode to spell check everywhere
+		  (flyspell-mode 1)
+		  ;; latin-1-prefix to always have it on
+		  (activate-input-method "latin-1-prefix")
+		  ;; Activa el diccionario espanol y hace que se guarde el
+		  ;; diccionario personal sin preguntar:
+		  (setq ispell-dictionary "es" ispell-silently-savep t)
+		  )
+		)
+      (add-hook 'lisp-mode-hook 
+		;; latin-1-prefix to always have it on
+		(activate-input-method "latin-1-prefix")
+		)
+    #+END_SRC
+** Aspecto
+*** Fuente y pantalla completa
+La primera línea es para poner la fuente en 12pt
+#+BEGIN_SRC emacs-lisp
+    (set-face-attribute 'default nil :height 140)
+    (add-to-list 'default-frame-alist '(height . 49)) ;; Default frame size
+    (add-to-list 'default-frame-alist '(width . 175))
+#+END_SRC
+*** TODO Change window size
+    #+BEGIN_SRC emacs-lisp
+      ;; Change window size
+      (global-set-key (kbd "C-S-<left>") 'shrink-window-horizontally) ;; control shift left
+      (global-set-key (kbd "C-S-<right>") 'enlarge-window-horizontally)
+      (global-set-key (kbd "C-S-<down>") 'shrink-window)
+      (global-set-key (kbd "C-S-<up>") 'enlarge-window)
+    #+END_SRC
+*** Dividir pantalla verticalmente
+   Cuando no sepa como encontrar una falla puedo mover esto por el
+   archivo para encontrarlas
+   Es una dimensión relativa (creo que porcentaje)
+;     (other-window 1)
+   #+BEGIN_SRC emacs-lisp   
+     (split-window-right 40) ;; usefull for debugging
+   #+END_SRC
+*** Página de inicio: Bookmarks
+   - Este código hace que Emacs inicie con la lista de Bookmarks
+   - Mi lista de bookmarks podría crecer enormemente
+   - Pensar en
+     - mantener bajo control o
+     - utilizar Boomarks+
+#+BEGIN_SRC emacs-lisp
+  (setq inhibit-splash-screen t)
+  (require 'bookmark) 
+  (list-bookmarks)
+  (switch-to-buffer "*Bookmark List*")
+#+END_src
+*** Página de inicio scratch
+
+#+BEGIN_SRC emacs-lisp
+  (setq initial-scratch-message
+	"
+  ;;                      HELLO WORLD!!!
+
+  ;; Este buffer no se guardará. Se pueden evaluar expresiones
+  ;; Lisp, escribir poemas cacofónicos, elaborar dibujos ASCII...
+  
+  ;;	  /_.|._\\          /_.|._\\          /_.|._\\
+  ;;	 -   -   -        -   -   -        -   -   -
+  "
+	)
+#+END_SRC
+*** Sin tool bar
+También podría quitar "menu bar" con (menu-bar-mode -1) aquí mismo,
+pero sí uso a veces el menu bar. Además, no gano nada quitándolo.
+#+BEGIN_SRC emacs-lisp
+(if window-system
+    (tool-bar-mode -1)
+)
+#+END_SRC
+** Aspell y Flyspell
+   Mis diccionarios!!!  Por favor!!!  Todo un rollo instalarlos Pero
+   eso lo tengo en mi blog de plgx
+   Antes era necesario llamarlo con  (require 'ispell), pero ya no.
+
+   #+BEGIN_SRC emacs-lisp
+     ;; ;; diccionario ortográfico
+     (setq ispell-program-name "aspell")
+     ;; (setq ispell-extra-args '("--sug-mode=fast"))
+     (setq ispell-list-command "list")
+     
+     ;; lo que sigue es lo m'as 'util que he encontrado (de DiogoRamos en
+     ;; http://www.emacswiki.org/emacs/FlySpell)
+     (let ((langs '("es" "british" "french" "ar")))
+       (setq lang-ring (make-ring (length langs)))
+       (dolist (elem langs) (ring-insert lang-ring elem)))
+     (defun cycle-ispell-languages ()
+       (interactive)
+       (let ((lang (ring-ref lang-ring -1)))
+	 (ring-insert lang-ring lang)
+	 (ispell-change-dictionary lang)))
+     ;; El binding para cambiar de diccionario     
+     (global-set-key [M-f6] 'cycle-ispell-languages)
+   #+END_SRC
+** Mis datos personales
+  variables de arranque para definir datos basicos. Utilizadas por
+  varios subprogramas de Emacs, como por el cliente de correo, por
+  org o pdf-tools a la hora de anotar.
+
+  #+BEGIN_SRC emacs-lisp
+    (setq user-full-name "GC"
+	  user-mail-address "ah.gilberto.c@gmail.com"
+	  mail-signature "\tGilberto Conde"
+	  major-mode 'text-mode)
+  #+END_SRC
+
+* TeX etc
+** Lo más importante
+   AUCTeX and RefTeX: Don’t forget to put something in your .emacs to
+   make RefTeX work properly with AUCTeX: (although this is already
+   loaded by the site-lisp or another file)
+#+BEGIN_SRC emacs-lisp
+  (setq TeX-auto-save t
+	TeX-parse-self t)
+  (setq-default TeX-master nil)
+  (add-hook 'LaTeX-mode-hook 'visual-line-mode)
+  ;; (add-hook 'auto-fill-mode)
+  ;; (add-hook 'LaTeX-mode-hook 'flyspell-mode) 
+  ;;innecesario: puesto para todo texto abajo 
+  (add-hook 'LaTeX-mode-hook 'LaTeX-math-mode)
+  (add-hook 'LaTeX-mode-hook 'turn-on-reftex)
+  (setq reftex-plug-into-AUCTeX t)
+  ;; Set a default bibliography for AUCTeX
+  (setq reftex-default-bibliography '("~/Library/texmf/bibtex/bib/vib-2"))
+  (setq reftex-bibpath-environment-variables '("~/Library/texmf/bibtex/bib/"))
+#+END_SRC
+
+** Comillas de LaTeX
+   pone comillas de latex alrededor del texto seleccionado
+
+   #+BEGIN_SRC emacs-lisp
+     (defadvice TeX-insert-quote (around wrap-region activate)
+       (cond
+	(mark-active
+	 (let ((skeleton-end-newline nil))
+	   (skeleton-insert `(nil ,TeX-open-quote _ ,TeX-close-quote) -1)))
+	((looking-at (regexp-opt (list TeX-open-quote TeX-close-quote)))
+	 (forward-char (length TeX-open-quote)))
+	(t
+	 ad-do-it)))
+     (put 'TeX-insert-quote 'delete-selection nil)
+     
+     (define-key global-map "\C-cq" 'TeX-insert-quote)
+   #+END_SRC
+
+** Mis ambientes LaTeX
+*** Carta simple
+    - la puse en abbrevs como cartaw
+* eww web browser
+** Lo general de eww
+   #+BEGIN_SRC emacs-lisp
+     (require 'eww)
+     ;;  ver url's con Safari o el default browser del OS
+     (setq browse-url-browser-function 'eww-browse-url)
+   #+END_SRC
+** Búsquedas útiles (diccionarios, wikipedia, duckduckgo)
+   - Bindings más abajo, en "Mis atajos"
+*** Diccionarios
+**** Definición en español (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-spanish-search (search-term)
+	"Busca SEARCH-TERM en el diccionario Wordreference en español"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference Def Esp (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/definicion/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Sinónimos en español (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-spanish-sinonimos (search-term)
+	"Busca sinónimos de SEARCH-TERM en Wordreference en español"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference Sin Esp (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/sinonimos/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Def en español de México DEM-Colmex 
+    #+BEGIN_SRC emacs-lisp
+      (defun dem-dictionary-search (search-term)
+	"Busca SEARCH-TERM en diccionario de la RAE"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "DEM (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://dem.colmex.mx/Ver/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Def en español RAE (via Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun rae-dictionary-search (search-term)
+	"Busca SEARCH-TERM en diccionario de la RAE"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "RAE (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://dle.rae.es/?w="
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Definition in English (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-english-search (search-term)
+	"Search for SEARCH-TERM definition on Wordreference"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference Def Eng (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/definition/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Synonyms in English (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-english-synonyms (search-term)
+	"Busca sinónimos de SEARCH-TERM en Wordreference en español"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference Sin Eng (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/synonyms/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** trans: English → Spanish (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-enes-search (search-term)
+	"Translate SEARCH-TERM into Spanish in Wordreference"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference EnEs (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/enes/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** trans: Spanish → English (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-esen-search (search-term)
+	"Translate SEARCH-TERM into Spanish in Wordreference"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference Es>En (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/es/en/translation.asp?spen="
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** trans: French → Spanish (Wordreference)
+    #+BEGIN_SRC emacs-lisp
+      (defun wordreference-fres-search (search-term)
+	"Traduire SEARCH-TERM en espagnol en Wordreference"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wordreference FrEs (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://www.wordreference.com/fres/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+*** Wikipedia
+**** Wikipedia in English
+    - C-c p Wi
+    #+BEGIN_SRC emacs-lisp
+      (defun wikipedia-english-search (search-term)
+	"Search for SEARCH-TERM on wikipedia"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wikipedia (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://en.wikipedia.org/wiki/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Wikipedia in Spanish
+    - C-c p We
+    #+BEGIN_SRC emacs-lisp
+      (defun wikipedia-spanish-search (search-term)
+	"Search for SEARCH-TERM on wikipedia"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wikipedia (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://es.wikipedia.org/wiki/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+**** Wikipedia in French
+    - C-c p Wf
+    #+BEGIN_SRC emacs-lisp
+      (defun wikipedia-french-search (search-term)
+	"Search for SEARCH-TERM on wikipedia"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "Wikipedia (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://fr.wikipedia.org/wiki/"
+	  search-term
+	  ))
+	)
+    #+END_SRC
+*** Máquinas de búsqueda
+**** Internet search with duckduckgo.org
+    #+BEGIN_SRC emacs-lisp
+      (defun plgx-duckduckgo-search (search-term)
+	"Search for SEARCH-TERM on DuckDuckGo"
+	(interactive
+	 (let ((term (if mark-active
+			 (buffer-substring (region-beginning) (region-end))
+		       (word-at-point))))
+	   (list
+	    (read-string
+	     (format "DuckDuckGo (%s):" term) nil nil term)))
+	 )
+	(browse-url
+	 (concat
+	  "https://duckduckgo.com/?q="
+	  search-term
+	  ))
+	)
+    #+END_SRC
+** COMMENT Podría ponerlo con use-package
+   Ahora que instal'e use-package tal vez podr'ia hacer esto
+   para simplificar la presentaci'on de este paquete
+   (use-package eww
+   :defer t
+   :init
+   (setq browse-url-browser-function
+   '((".*google.*maps.*" . browse-url-generic)
+   ;; Github goes to firefox, but not gist
+   ("http.*\/\/github.com" . browse-url-generic)
+   ("groups.google.com" . browse-url-generic)
+   ("docs.google.com" . browse-url-generic)
+   ;; ("melpa.org" . browse-url-generic)
+   ;; ("build.*\.elastic.co" . browse-url-generic)
+   ;; (".*-ci\.elastic.co" . browse-url-generic)
+   ;; ("gradle-enterprise.elastic.co" . browse-url-generic)
+   ;; ("internal-ci\.elastic\.co" . browse-url-generic)
+   ("zendesk\.com" . browse-url-generic)
+   ("salesforce\.com" . browse-url-generic)
+   ("stackoverflow\.com" . browse-url-generic)
+   ;; ("apache\.org\/jira" . browse-url-generic)
+   ;; ("thepoachedegg\.net" . browse-url-generic)
+   ;; ("zoom.us" . browse-url-generic)
+   ;; ("t.co" . browse-url-generic)
+   ("twitter.com" . browse-url-generic)
+   ;; ("\/\/a.co" . browse-url-generic)
+   ("youtube.com" . browse-url-generic)
+   ("amazon.com" . browse-url-generic)
+   ;; ("slideshare.net" . browse-url-generic)
+   ("." . eww-browse-url)
+   )
+   )
+   (setq shr-external-browser 'browse-url-generic)
+   (setq browse-url-generic-program (executable-find "firefox"))
+   (add-hook 'eww-mode-hook #'toggle-word-wrap)
+   (add-hook 'eww-mode-hook #'visual-line-mode)
+   :config
+   (use-package s :ensure t)
+   ;; (define-key eww-mode-map "j" 'next-line)
+   ;; (define-key eww-mode-map "k" 'previous-line)
+   )
+** COMMENT (borrar) Páginas nuevas en buffers nuevos
+   No sé si realmente sirve.  Creo que no.  Habría que probar la
+   diferencia. 
+
+   para que habra p'aginas nuevas en buffers nuevos Auto-rename new
+   eww buffers http://ergoemacs.org/emacs/emacs_eww_web_browser.html 
+   #+BEGIN_SRC emacs-lisp
+     (defun xah-rename-eww-hook ()
+       "Rename eww browser's buffer so sites open in new page."
+       (rename-buffer "eww" t))
+     (add-hook 'eww-mode-hook #'xah-rename-eww-hook)
+     
+     ;; If the current buffer is an eww buffer, "M-x eww" will always reuse the
+     ;; current buffer to load the new page. Below advice will make "C-u M-x eww"
+     ;; force a new eww buffer even when the current buffer is an eww buffer.
+     ;; The above `xah-rename-eww-hook' fix is still needed in order to create
+     ;; uniquely named eww buffers.
+     ;; http://emacs.stackexchange.com/a/24477/115
+     (defun modi/force-new-eww-buffer (orig-fun &rest args)
+       "When prefix argument is used, a new eww buffer will be created.
+     This is regardless of whether the current buffer is an eww buffer. "
+       (if current-prefix-arg
+	   (with-temp-buffer
+	     (apply orig-fun args))
+	 (apply orig-fun args)))
+     (advice-add 'eww :around #'modi/force-new-eww-buffer)
+   #+END_SRC
+* RSS feed
+** Newsticker
+*** info
+   Newsticker seems like a good option. It's already inside Emacs; just
+   - call it with M-x newsticker-show-news.
+   - Add RSS feeds with a and 
+   - visit articles with v.
+   - Go to next feed with f and
+   - previous with F or
+   - next item with n and
+   - previous with p. You can
+   - mark items as inmortal with i to stay as unread. 
+   It's customizable.
+*** COMMENT Llamarlo desde cualquier ventana: Ver Atajos>
+Bindings
+    #+BEGIN_SRC emacs-lisp   
+      (global-set-key (kbd "C-c p n") 'newsticker-show-news)
+    #+END_SRC
+ 
+* Markdown
+  código para convertir texto marcado a texto/html usando markdown
+  Aunque seguro que hay cosas mucho más modernas
+  #+BEGIN_SRC emacs-lisp
+    (defun mimedown ()
+      (interactive)
+      (save-excursion
+	(message-goto-body)
+	(let* ((sig-point (save-excursion (message-goto-signature) (forward-line -1) (point)))
+	       (orig-txt (buffer-substring-no-properties (point) sig-point)))
+	  (shell-command-on-region (point) sig-point "Markdown.pl" nil t)
+	  (insert "<#multipart type=alternative>\n")
+	  (insert orig-txt)
+	  (insert "<#part type=text/html>\n")
+	  ;; esta parte (antes de cerrar comillas anteriores) parece inneceesaria:
+	  ;; < html>\n< head>\n< title> HTML version of email</title>\n</head>\n< body>
+	  (exchange-point-and-mark)
+	  (insert "<#/multipart>\n"))))
+    ;; por lo tanto, ésta también es redundante:
+    ;; \n</body>\n</html>\n
+    ;; (después de abrir las comillas anteriores)
+  #+END_SRC
+
+* Org
+  Mi configuración de org mode org-mode orgmode la tengo en un archivo
+  aparte dentro de ~/.emacs.d/lisp/ en el archivo "org-config.el": en
+  [[file:lisp/org-config.el][Archivo de configuracion de org]]
+
+  #+BEGIN_SRC emacs-lisp
+    (require 'org-config) ;; llama un documento que tengo en el load-path
+    ;; con todas mis configuraciones de org-mode
+    
+    (define-key global-map "\C-ca" 'org-agenda)
+    (define-key global-map "\C-cc" 'org-capture)
+  #+END_SRC
+** Org Babel
+   Esto sirve para introducir fragmentos de código de programación a
+   los documentos en org
+   #+BEGIN_SRC emacs-lisp
+     (org-babel-do-load-languages
+      'org-babel-load-languages
+      '(
+	(latex . t)
+	(shell . t)
+	;;   (ledger . t)
+	)
+      )
+   #+END_SRC
+
+* PDF Tools
+  Instalar siguiendo muy estrictamente todo lo que recomienda la
+  página del proyecto en https://github.com/politza/pdf-tools
+
+  Después de instalar pdf-tools (todo un rollo que escribí en:
+  https://plgx.wordpress.com/2021/01/04/pdf-tools-en-emacs-version-mac/
+
+  Que es versión extendida de Joe y William en: https://emacs.stackexchange.com/questions/13314/install-pdf-tools-on-emacs-macosx/22591#22591)
+
+  *Install* epdfinfo via 'brew install pdf-tools --HEAD' and then install the
+  pdf-tools elisp via the use-package below.
+
+  Just do 'brew upgrade pdf-tools --HEAD' to *upgrade* the epdfinfo
+  server, prior to upgrading to newest pdf-tools package using Emacs
+  package system.
+
+  If things get messed up, just do 'brew uninstall pdf-tools --HEAD',
+  wipe out the elpa pdf-tools package and reinstall both as at the
+  start.
+
+  Otras recomendaciones para actualizar:
+  https://github.com/politza/pdf-tools y de
+  http://pragmaticemacs.com/emacs/view-and-annotate-pdfs-in-emacs-with-pdf-tools/
+
+  De stackexchange
+  https://emacs.stackexchange.com/questions/21755/use-pdfview-as-default-auctex-pdf-viewer/21764
+
+  #+BEGIN_SRC emacs-lisp
+    (defun bjm/save-buffer-no-args ()
+      "Save buffer ignoring arguments"
+      (save-buffer))
+
+    (use-package pdf-tools
+      :ensure t
+					    ;      :pin manual ;; actualizar manualmente
+      :config
+      (setenv "PKG_CONFIG_PATH" "/usr/local/opt/zlib/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/X11/lib/pkgconfig:/usr/local/Cellar/poppler/22.08.0/lib/pkgconfig:/opt/x11/share/pkgconfig")
+      (pdf-tools-install)
+      (custom-set-variables
+       '(pdf-tools-handle-upgrades t)) ; I used to have this set to nil and upgrading through homebrew, but this does not work any more.
+      ;; (setq pdf-info-epdfinfo-program "/usr/local/bin/epdfinfo")
+      ;; recomendado por politzia (pdf-tools git page) para usarlo con orgmode 
+      ;; (eval-after-load 'org '(require 'org-pdftools))
+      ;; (setq org-pdftools-root-dir "~/biblio/")
+      ;; fine zoom in and out
+      (setq pdf-view-resize-factor 1.1)
+      ;; open pdfs scaled to fit page or other size
+      (setq-default pdf-view-display-size 1.5) ;; fit widht or fit-page,
+      ;; fit-height or a number as a scale factor
+      ;; to use pdfview with auctex
+      (setq TeX-view-program-selection '((output-pdf "PDF Tools"))
+	    TeX-view-program-list '(("PDF Tools" TeX-pdf-tools-sync-view))
+	    TeX-source-correlate-start-server t) ;; not sure if last line is
+      ;; neccessary
+      ;; Update PDF buffers after successful LaTeX runs
+      (add-hook 'TeX-after-TeX-LaTeX-command-finished-hook
+		'TeX-revert-document-buffer)
+      (setq revert-without-query '(".pdf"))
+      ;; automatically annotate highlights
+      (setq pdf-annot-activate-created-annotations t)
+      ;; keyboard shortcuts
+      (define-key pdf-view-mode-map (kbd "h") 'pdf-annot-add-highlight-markup-annotation)
+      (define-key pdf-view-mode-map (kbd "t") 'pdf-annot-add-text-annotation)
+      (define-key pdf-view-mode-map (kbd "D") 'pdf-annot-delete)
+      ;; wait until map is available
+      (with-eval-after-load "pdf-annot"
+	(define-key pdf-annot-edit-contents-minor-mode-map (kbd "<return>") 'pdf-annot-edit-contents-commit)
+	(define-key pdf-annot-edit-contents-minor-mode-map (kbd "<S-return>") 'newline)
+	;; save after adding comment
+	(advice-add 'pdf-annot-edit-contents-commit
+		    :after 'bjm/save-buffer-no-args)
+	)
+      )
+#+END_SRC
+
+ESto no funcionaba, así que lo saqué porque siempre me marca
+  error. INVESTIGAR
+  (use-package pdf-view-restore
+  :after pdf-tools
+  :config
+  (add-hook 'pdf-view-mode-hook 'pdf-view-restore-mode))
+
+  (setq pdf-view-restore-filename "~/.emacs.d/.pdf-view-restore")
+
+* org-roam
+  Este paquete se ve super prometedor.  Tengo que ir agregando cosas,
+  revisando y quizás quitando.  *No olvidar agreagar org-roam-bibtex.*
+  
+  #+BEGIN_SRC emacs-lisp
+		(use-package org-roam
+		  :ensure t
+		  :init
+		  (setq org-roam-v2-ack t)
+		  :custom
+		  (org-roam-directory "~/roaminiando")
+		  (org-roam-completion-everywhere t)
+		  (org-roam-capture-templates
+		   '(("d" "default" plain
+		      "\n- tags ::  %?\n\n* "
+		      :if-new (file+head "%<%Y%m%d%H%M%S>-${slug}.org" "#+title: ${title}\n#+date: %U\n")
+		      :unnarrowed t)
+		     ("l" "lectura, notas de" plain
+		      "\n- tags ::  \n\n* Source\n\nAuthor: %^{Author}\nTitle: ${title}\nYear: %^{Year}\nCiteKey: %^{CiteKey}\n\n* Summary\n\n%?"
+		      :if-new (file+head "%<%Y%m%d%H%M%S>-${slug}.org" "#+title: ${title}\n#+date: %U\n")
+		      :unnarrowed t)
+		     ("p" "proyecto" plain
+		      "- tags :: \n\n* Metas\n\n%?\n\n* Tareas\n\n** TODO tareas iniciales\n\n* Fechas importantes\n\n"
+		      :if-new (file+head "%<%Y%m%d%H%M%S>-${slug}.org" "#+title: ${title}\n#+filetags: Project\n#+date: %U\n\n")
+		      :unnarrowed t)
+		     ("a" "area" plain
+		      "\n- tags ::  \n\n* Goals\n\n%?\n\n* Tasks\n\n** TODO Add initial tasks\n\n* Dates\n\n"
+		      :if-new (file+head "%<%Y%m%d%H%M%S>-${slug}.org" "#+title: ${title}\n#+filetags: Area\n#+date: %U\n")
+		      :unnarrowed t)
+		     ("r" "recursos" plain
+		      "\n- tags ::  \n\n* Tipe\n\n%?\n\n* URL or Location\n\n** Add extra info\n\n"
+		      :if-new (file+head "%<%Y%m%d%H%M%S>-${slug}.org" "#+title: ${title}\n#+filetags: Resources\n#+date: %U\n")
+		      :unnarrowed t)))
+		  (org-roam-dailies-capture-templates
+		   '(("d" "default" entry "* %<%H:%M %Z>: %?"
+		      :if-new (file+head "%<%Y-%m-%d>.org" "#+title: %<%Y-%m-%d>\n"))))
+		  :bind (("C-c r l" . org-roam-buffer-toggle)
+			 ("C-c r f" . org-roam-node-find)
+			 ("C-c r c" . org-roam-capture) ;; creates node and restores current window
+			 ("C-c r i" . org-roam-node-insert)
+			 :map org-mode-map
+			 ("C-S-M-i" . completion-at-point)
+			 :map org-roam-dailies-map
+			 ("Y" . org-roam-dailies-capture-yesterday)
+			 ("T" . org-roam-dailies-capture-tomorrow))
+		  :bind-keymap
+		  ("C-c r d" . org-roam-dailies-map)
+		  :config
+		  (require 'org-roam-dailies) ;; Ensure the keymap is available
+		  (org-roam-db-autosync-mode))
+#+END_SRC
+
+* COMMENT org-roam-bib y org-ref
+
+** org-ref
+
+   El archivo de pdfs de reftex quedó definido más arriba
+
+#+BEGIN_SRC emacs-lisp
+  (require 'org-ref)
+  (setq org-ref-bibliography-notes "~/biblio/notes.org"
+	org-ref-default-bibliography '("~/Library/texmf/bibtex/bib/vib-2.bib")
+	org-ref-pdf-directory "~/biblio/")
+  
+  ;; in case I use helm-bibtex or ivy-bibtex, use
+  ;; (setq bibtex-completion-bibliography "~/Dropbox/bibliography/references.bib"
+  ;; bibtex-completion-library-path "~/Dropbox/bibliography/bibtex-pdfs"
+  ;; bibtex-completion-notes-path "~/Dropbox/bibliography/bibtex-notes")
+  
+  ;; open pdf with system pdf viewer (works on mac)
+  ;;  (setq bibtex-completion-pdf-open-function
+  ;;  (lambda (fpath)
+  ;;    (start-process "open" "*open*" "open" fpath)))
+  
+  ;; alternative
+  (setq bibtex-completion-pdf-open-function 'org-open-file)
+  ;;  (org-ref-define-citation-link "bibentry" ?b)
+  (setq org-latex-pdf-process (list "latexmk -shell-escape -bibtex -f -pdf %f"))
+  
+#+END_SRC
+
+** org-roambib
+ Manejo de bibliografía ligado a org-roam. Changuitos. Ojalá me
+ encante.
+
+ #+BEGIN_SRC emacs-lisp
+ (use-package org-roam-bibtex
+   :after org-roam
+   :config
+   (require 'org-ref)) ; optional: if Org Ref is not loaded anywhere else, load it here
+
+ #+END_SRC
+
+* Ebib
+
+#+BEGIN_SRC emacs-lisp
+    (use-package ebib
+      :defer t
+      :ensure t
+      :custom
+      (ebib-preload-bib-files '("~/Library/texmf/bibtex/bib/vib-2.bib"))
+      (ebib-bib-search-dirs '("~/Library/texmf/bibtex/bib"))
+      )
+    (global-set-key (kbd "C-c e") 'ebib)
+    (global-set-key (kbd "C-c u i") 'ebib-insert-citation)
+#+END_SRC  
+
+* Epub support
+** Nov
+Me gustó nov, a program to display epub ebooks in Emacs
+(aunque también podría usar ereader, ver después del código)
+#+BEGIN_SRC emacs-lisp
+  (require 'nov)
+  (add-to-list 'auto-mode-alist '("\\.epub\\'" . nov-mode))
+  (defun my-nov-font-setup ()
+    (face-remap-add-relative 'variable-pitch :family "Georgia"
+			                     :height 1.2))
+  (add-hook 'nov-mode-hook 'my-nov-font-setup)
+  (setq nov-text-width 80)
+#+END_SRC
+
+** COMMENT o ereader, que no me gustó tanto
+# +BEGIN_SRC emacs-lisp
+(require 'ereader)
+(add-to-list 'auto-mode-alist '("\\.epub\\'" . ereader-mode))
+# +END_SRC
+
+* Atajos 
+** Abbrevs
+   Esto ha sido muy 'util. Antes lo usaba por comandos, ahora por lisp code
+*** by lisp code
+   - No necesito activar
+     - (setq-default abbrev-mode t)
+   - Porque se activa desde plgx-abbrev.el
+   - OJO
+     - No se guardan las abreviaturas, porque as'i lo indica el lisp code
+     - Para editarlas y guardarlas, hay que abrir el archivo
+     - Hice un register C-x r b "abbrevs"
+   #+BEGIN_SRC emacs-lisp
+     (load "~/.emacs.d/lisp/plgx-abbrev.el")
+   #+END_SRC
+**** Source
+     http://xahlee.info/emacs/emacs/emacs_abbrev_mode.html
+     Gracias Xah!!! Otra vez me salvaste.  Creo que esto se va a respaldar
+     automáticamente. 
+*** COMMENT By commands
+   from http://www.emacswiki.org/emacs/AbbrevMode.  *Calling Abbrevs*
+   is as simple as doing ‘C-xaig’ (add inverse global) .  *Defining
+   Abbrevs* Type the word you want to use as expansion, and then type
+   ‘C-x a g’ and the abbreviation for it.  *Saving Abbrevs* Use ‘M-x
+   write-abbrev-file’ and just hit RET when asked for a filename.
+   #+BEGIN_SRC emacs-lisp
+     (setq-default abbrev-mode t)       ;; always on
+   #+END_SRC
+     (setq abbrev-file-name             ;; tell emacs where to read abbrev
+	   "~/.emacs.d/abbrev_defs")    ;; definitions from.     
+     (setq save-abbrevs 'silent)        ;; save abbrevs when files are saved
+     (setq save-abbrevs t)              ;; save abbrevs when files are saved
+                                        ;; ;; you will be asked before the abbreviations are saved
+** Bindings
+Tengo instalado esto en el sistema, así que lo voy a usar. jeje Parece
+bueno. En lugar de tener los keybinding maps sueltos aquí y all'a, los
+pondré con este paquete para que me los organice y me diga si están
+chocando con algo.
+
+Los de eww funcionan aunque esté en un buffer que no sea de eww.  Por
+consistencia con otras claves mias puse estos 'keyboard bendigas'
+
+    PROBAR si puedo luego poner otro prefijo después de estos que
+    funcionan con "p"
+    #+BEGIN_SRC emacs-lisp
+      (bind-keys :prefix-map my-customize-prefix-map
+		 :prefix "C-c p"
+		 ;; Wikipedia
+		 ("Wi" . wikipedia-english-search) ;; i de ingles
+		 ("We" . wikipedia-spanish-search) ;; e de espanol
+		 ("Wf" . wikipedia-french-search) ;; f de frances
+		 ;; Diccionarios
+		 ("De" . wordreference-spanish-search)
+		 ("Dr" . rae-dictionary-search)
+		 ("Dd" . dem-dictionary-search)
+		 ("Di" . wordreference-english-search)
+		 ;; Sinónimos
+		 ("Se" . wordreference-spanish-sinonimos)
+		 ("Si" . wordreference-english-synonyms)
+		 ;; Traducción
+		 ("Tf" . wordreference-fres-search)
+		 ("Ti" . wordreference-enes-search)
+		 ("Te" . wordreference-esen-search)
+		 ;; eww
+		 ("Bd" . plgx-duckduckgo-search)
+		 ("o" . eww)
+		 ("w" . eww-copy-page-url)
+		 ;; Newsticker
+		 ("n" . newsticker-show-news)
+		 ;; Emacs Misc
+		 ("r" . reload-dotemacs-file)
+		 (";" . comment-region)
+		 ("u" . uncomment-region)
+		 ("s" . window-swap-states) ;; Swap windows
+		 )
+    #+END_SRC
+** Más bindings
+Ver con bindings de eww
+#+BEGIN_SRC emacs-lisp
+    (bind-key "M-s-<left>" 'windmove-left)
+    (bind-key "M-s-<right>" 'windmove-right)
+    (bind-key "M-s-<up>" 'windmove-up)
+    (bind-key "M-s-<down>" 'windmove-down)
+#+END_SRC
+** Mis ambientes entre símbolos
+#+BEGIN_SRC emacs-lisp
+  (add-hook 'text-mode-hook '(lambda () (local-set-key (kbd "C-M-2") (lambda () (interactive) (insert "``''") (backward-char 2)))))
+  (global-set-key (kbd "C-M-{") (lambda () (interactive) (insert "{}") (backward-char 1)))
+  (global-set-key (kbd "C-M-[") (lambda () (interactive) (insert "[ ]")))
+  (global-set-key (kbd "C-M-]") (lambda () (interactive) (insert "[[vinculo][] ]") (backward-char 3)))
+  (global-set-key (kbd "C-M-$") (lambda () (interactive) (insert "$$ ") (backward-char 2)))    ;; ambiente mate LaTeX
+  (global-set-key (kbd "C-M-<") (lambda () (interactive) (insert "<>") (backward-char 1)))
+  (global-set-key (kbd "C-M-\"") (lambda () (interactive) (insert "\"\"") (backward-char 1)))  ;; comillas rectas
+  (global-set-key (kbd "C-\"") (lambda () (interactive) (insert "\“\”") (backward-char 1)))    ;; comillas cursivas
+  (global-set-key (kbd "C-M-\'") (lambda () (interactive) (insert "\‘\’") (backward-char 1)))  ;; pone entre par de comillas simples cursivas ‘’ 
+  (global-set-key (kbd "C-M-\?") (lambda () (interactive) (insert "\¿\?") (backward-char 1)))  ;; pone entre signos de interrogación
+  (global-set-key (kbd "C-M-\-") (lambda () (interactive) (insert "\\footnote{\\bibentry{}.}") (backward-char 3))) ;; 
+#+END_SRC
+** Muban
+*** info
+Ambiente para crear y usar templates, plantillas
+Se guardan en ~/.emacs.muban
+Siguiendo el formato (ver más ejemplos en la página de muban)
+
+#muban-begin exam#0ple
+#0<img src=@url@>#0
+
+Then you can insert
+<img src="url">
+...other 8 times...
+<img src="url">
+simply by typing exam10ple at the insertion point
+and execute 'muban-apply (better to bind some key).
+Use TAB to quickly modify the content of "url".
+
+For detailed explanations and more examples see the homepage:
+https://github.com/jiahaowork/muban.el
+
+*** src
+
+#+BEGIN_SRC emacs-lisp
+  (global-set-key (kbd "§") 'muban-apply)
+  (defun muban-file ()
+      (interactive)
+      (find-file "~/.emacs.muban"))
+#+END_SRC
+  (global-set-key (kbd "C-c p m") 'muban-file)
+* Misc
+** COMMENT Tema
+
+#+BEGIN_SRC emacs-lisp
+     (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
+     (load-theme 'misterioso) 
+#+END_SRC
+** Word count
+   Cuenta las palabras de un buffer o región 
+#+BEGIN_SRC emacs-lisp
+(defun my-count-words-region (posBegin posEnd)
+  "Print number of words and chars in region."
+  (interactive "r")
+  (message "Counting …")
+  (save-excursion
+    (let (wordCount charCount)
+      (setq wordCount 0)
+      (setq charCount (- posEnd posBegin))
+      (goto-char posBegin)
+      (while (and (< (point) posEnd)
+                  (re-search-forward "\\w+\\W*" posEnd t))
+        (setq wordCount (1+ wordCount)))
+
+      (message "Words: %d. Chars: %d." wordCount charCount)
+      )))
+ (defalias 'word-count 'my-count-words-region)
+#+END_SRC
+** Unfill region
+*** info
+Encontré esta linda función en
+http://ergoemacs.org/emacs/emacs_unfill-paragraph.html. 
+
+Xah usa M-Q, yo preferí usar este mismo comando pero con mi prefijo plgx:
+     (define-key global-map "\M-Q" 'xah-unfill-region)
+
+Gracias Xah!!!
+*** src
+   #+BEGIN_SRC emacs-lisp   
+     (defun xah-unfill-region (start end)
+       "Replace newline chars in region by single spaces.  This command does the inverse of `fill-region'.
+	URL `http://ergoemacs.org/emacs/emacs_unfill-paragraph.html'
+	Version 2016-07-13"
+       (interactive "r")
+       (let ((fill-column most-positive-fixnum))
+	 (fill-region start end)))  
+
+      (global-set-key (kbd "C-c p M-Q") 'xah-unfill-region)
+   #+END_SRC
+* COMMENT Desactivados
+** Emms
+   Programa para escuchar múscia.  Padrísimo.  Habría que buscar otro
+   decodificador de música para comparar sonido con el VLC.
+
+   También tengo que comprar música que pueda escuchar aquí. jajaja
+   # +BEGIN_SRC emacs-lisp
+   (add-to-list 'load-path "~/tools/emms/lisp/")
+   (require 'emms-setup)
+   (require 'emms-player-vlc)
+   ;; (require 'emms-vlc-config)
+   (emms-all)
+   (emms-default-players)
+   (setq emms-player-vlc-command-name
+   "/Applications/VLC.app/Contents/MacOS/VLC")
+   (setq emms-source-file-default-directory "~/Music/")
+    
+   ;; add flv and ogv
+   ;; (define-emms-simple-player mplayer '(file url)
+   ;;   (regexp-opt '(".ogg" ".mp3" ".wav" ".mpg" ".mpeg" ".wmv" ".wma"
+   ;; 		".mov" ".avi" ".divx" ".ogm" ".asf" ".mkv" "http://" "mms://"
+   ;; 		".rm" ".rmvb" ".mp4" ".flac" ".vob" ".m4a" ".flv" ".ogv" ".pls")
+   ;; 	      )
+   ;;   "mplayer" "-slave" "-quiet" "-really-quiet" "-fullscreen"
+   ;;   )
+
+
+   ;;** EMMS
+   ;; Autoload the id3-browser and bind it to F7.
+   ;; You can change this to your favorite EMMS interface.
+   ;; (autoload 'emms-smart-browse "emms-browser.el" "Browse with EMMS" t)
+   ;; (global-set-key [(f7)] 'emms-smart-browse)
+
+   ;; (with-eval-after-load 'emms
+   ;;   (emms-devel)
+   ;; ;;   (emms-standard) ;; or (emms-devel) if you want all features
+   ;;    (setq emms-source-file-default-directory "~/Music"
+   ;;          emms-info-asynchronously t
+   ;;          emms-show-format "♪ %s")
+
+   ;;    ;; Might want to check `emms-info-functions',
+   ;;    `emms-info-libtag-program-name',
+   ;;    `emms-source-file-directory-tree-function'
+   ;;    ;; as well.
+
+   ;;    ;; Determine which player to use.
+   ;;    ;; If you don't have strong preferences or don't have
+   ;;    ;; exotic files from the past (wma) `emms-default-players`
+   ;;    ;; is probably all you need.
+   ;;    (if (executable-find "vlc")
+   ;;        (setq emms-player-list
+   ;;    	     ;; '(emms-player-mplayer)
+   ;;    	     '(emms-player-vlc)
+   ;;    	     )
+   ;;      (emms-default-players))
+
+   ;;    ;; For libre.fm see `emms-librefm-scrobbler-username' and
+   ;;    ;; `emms-librefm-scrobbler-password'.
+   ;;    ;; Future versions will use .authinfo.gpg.
+   ;;    )
+
+
+   ;; (define-emms-simple-player alsaplayer '(file url) (regexp-opt
+   ;; '(".ogg" ".mp3" ".wav" ".flac" ".pls" ".m3u" "http://"))
+   ;; "alsaplayer" "--quiet" "--nosave" "\"--interface text\"")
+   # +END_SRC
+** mu4e
+*** Actualizaciones manuales
+   Update path to mu for macOS as needed
+
+   # +BEGIN_SRC emacs-lisp
+   (when (eq system-type 'darwin)
+   (add-to-list 'load-path "/usr/local/Cellar/mu/1.2.0_1/bin")
+   (add-to-list 'load-path "/usr/local/Cellar/mu/1.2.0_1/share/emacs/site-lisp/mu/mu4e")
+   )
+   # +END_SRC
+*** Configuraciones básicas
+   # +BEGIN_SRC emacs-lisp
+   (require 'mu4e)
+   (add-hook 'mu4e-compose-mode-hook 'flyspell-mode) ;; spell check
+   (setq mail-user-agent 'mu4e-user-agent) ;; use mu4e for e-mail in emacs
+   (setq mu4e-change-filenames-when-moving t) ;; for mbsync
+
+   ;; view message in browser by typing 'aV'  XXXXX
+   (add-to-list 'mu4e-view-actions
+   '("ViewInBrowser" . mu4e-action-view-in-browser) t)
+   ;; No line breaks in compose
+   (defun no-auto-fill ()
+   "Turn off auto-fill-mode."
+   (auto-fill-mode -1))
+   ;; Turn off 80-character auto-wrap
+   (add-hook 'mu4e-compose-mode-hook #'no-auto-fill)
+
+   (global-set-key (kbd "C-c m n") 'mu4e) ;; para abrir mu4e desde cualquier buffer
+   (global-set-key (kbd "C-c m u") 'mu4e-update-mail-and-index) ;; actualizar correo
+   # +END_SRC
+*** COMMENT Path to emails
+   # +BEGIN_SRC emacs-lisp
+   (setq mu4e-maildir "~/Maildir" ;; se puede cambiar (solo no usar symlink) incluso esconder con punto
+   mu4e-mu-binary "/usr/local/Cellar/mu/1.2.0_1/bin/mu"
+   mu4e-show-images t
+   mu4e-view-show-addresses t
+   mu4e-attachment-dir "~/Downloads" 
+   mu4e-use-fancy-chars t
+   smtpmail-auth-credentials (expand-file-name "~/.authinfo.gpg")
+   mu4e-get-mail-command "mbsync -a"
+   mu4e-hide-index-messages t ;; Silence index messages
+   mu4e-update-interval 1200 ;; Update every 20 minutes
+   mu4e-compose-signature-auto-include nil ;; No automatic signature ;; manejado por context
+   message-kill-buffer-on-exit t ;; don't keep message buffers around
+   mu4e-sent-messages-behavior 'delete ;; don't save message to Sent Messages, Gmail & Outlook take care of this ;; (Tal vez quite esto, porque no quiero cargar mas a la sincronizaci'on con el servidor, aunque quiz'as no tome tanto tiempo, salvo con attachments grandes. En esos casos debo usar dropbox u otro servicio por el estilo.)      
+   )
+   # +END_SRC
+*** smtpmail
+
+   these must start with a "/", and must exist
+   (i.e.. /home/user/Maildir/sent must exist)
+   you use e.g. 'mu mkdir' to make the Maildirs if they don't
+   already exist
+
+   below are the defaults; if they do not exist yet, mu4e offers to
+   create them. they can also functions; see their docstrings.
+   (setq mu4e-sent-folder   "/sent")
+   (setq mu4e-drafts-folder "/drafts")
+   (setq mu4e-trash-folder  "/trash")
+
+   default account: gmail
+
+   # +BEGIN_SRC emacs-lisp
+   (setq smtpmail-default-smtp-server "smtp.gmail.com")
+   (require 'smtpmail)
+   (setq send-mail-function 'smtpmail-send-it
+   message-send-mail-function 'smtpmail-send-it
+   smtpmail-smtp-server "smtp.gmail.com"
+   smtpmail-stream-type 'starttls
+   smtpmail-smtp-service 587
+   gnutls-algorithm-priority "NORMAL:%COMPAT"
+   )
+   # +END_SRC
+
+*** Contexts
+   Para tener acceso tanto a mi cuenta de outlook como a la de gmail 
+
+   # +BEGIN_SRC emacs-lisp
+   (setq mu4e-contexts
+   `( ,(make-mu4e-context
+   :name "gmail"
+   :enter-func (lambda () (mu4e-message "Entrada al contexto Gmail"))
+   ;; :leave-func (lambda () (mu4e-message "Salida del contexto Gmail")) ; not defined
+   ;; we match based on the maildir of the message
+   :match-func (lambda (msg)
+   (when msg
+   ( mu4e-message-contact-field-matches msg :to "ah.gilberto.c@gmail.com" )))
+   :vars '(( user-mail-address . "ah.gilberto.c@gmail.com" )
+   ( mu4e-trash-folder . "/gmail/[Gmail].Trash" )
+   ( mu4e-refile-folder . "/gmail/[Gmail].Archive" )
+   ( mu4e-drafts-folder . "/gmail/[Gmail].Drafts" )
+   ( mu4e-maildir-shortcuts . (( "/gmail/INBOX" . ?i )
+   ( "/gmail/[Gmail].Sent Mail" . ?s)
+   ( "/gmail/[Gmail].Trash" . ?t)))
+   ( smtpmail-mail-address . "ah.gilberto.c@gmail.com" )
+   ( user-full-name . "Gilberto Conde" ) 
+   ( smtpmail-smtp-user . "ah.gilberto.c" )
+   ))
+   ,(make-mu4e-context
+   :name "outlook"
+   :enter-func (lambda () (mu4e-message "Entrada al contexto Colmex"))
+   ;; :leave-func (lambda () (mu4e-message "Salida del contexto Colmex")); none
+   ;; we match based on the maildir of the message
+   :match-func (lambda (msg)
+   (when msg
+   ( mu4e-message-contact-field-matches msg :to "ah.gilberto.c@gmail.com" )))
+   :vars '(( user-mail-address . "gilberto.conde@colmex.mx" )
+   ( mu4e-trash-folder . "/outlook/Deleted Items" )
+   ( mu4e-refile-folder . "/outlook/Archive1" )
+   ( mu4e-drafts-folder . "/outlook/Drafts" )
+   (mu4e-maildir-shortcuts . (("/outlook/INBOX" . ?i)
+   ("/outlook/Sent Items" . ?s)
+   ("/outlook/Deleted Items" . ?t)
+   ("/outlook/tesis" . ?e) ;; me hab'ia generado error tal vez porque hab'ia espacio entre el "?" yla "e" 
+   )
+   )		   
+   ( smtpmail-smtp-user . "gilberto.conde" ) ; con o sin dominio ?
+   ( smtpmail-smtp-address . "gilberto.conde@colmex.mx" )
+   ( smtpmail-smtp-server . "smtp.office365.com" )
+   ( user-full-name . "Gilberto Conde" )
+   ))
+   ))
+   # +END_SRC
+
+*** COMMENT mu4e-altert
+   Pone el sobresito en la barra sobre el mini-buffer
+
+   #+BEGIN_SRC emacs-lisp
+   (use-package mu4e-alert
+   :ensure t
+   :after mu4e
+   :init
+   (setq mu4e-alert-interesting-mail-query
+   (concat
+   "flag:unread maildir:/outlook/INBOX "
+   "OR "
+   "flag:unread maildir:/gmail/INBOX"
+   ))
+   (mu4e-alert-enable-mode-line-display)
+   (defun gjstein-refresh-mu4e-alert-mode-line ()
+   (interactive)
+   (mu4e~proc-kill)
+   (mu4e-alert-enable-mode-line-display)
+   )
+   (run-with-timer 0 60 'gjstein-refresh-mu4e-alert-mode-line)
+   )
+   #+END_SRC
+
+*** COMMENT org-mu4e
+   Load the org-mu4e package -- I installed this manually, not through
+   MELPA  -- aparentemente es parte de mu4e -- innecesario descargar, 
+   (load "org-mu4e") ;; best not to include the ending “.el” or “.elc”
+**** Base
+    #+BEGIN_SRC emacs-lisp
+    (require 'org-mu4e)
+    ;;store link to message if in header view, not to header query
+    (setq org-mu4e-link-query-in-headers-mode nil)
+    (require 'mu4e-contrib)
+    #+END_SRC
+
+**** org-mime settings
+    Esto sirve para convertir mensaje en html desde org-mode
+    #+BEGIN_SRC emacs-lisp
+    (add-hook 'message-mode-hook
+    (lambda ()
+    (local-set-key (kbd "C-c M-o") 'org-mime-htmlize)))
+    #+END_SRC
+
+**** org-mode binding
+    #+BEGIN_SRC emacs-lisp
+    (add-hook 'org-mode-hook
+    (lambda ()
+    (local-set-key (kbd "C-c M-o") 'org-mime-org-buffer-htmlize)))
+    #+END_SRC
+
+*** COMMENT Comandos adicionales mu4e
+**** Forward message
+    #+BEGIN_SRC emacs-lisp
+    (defun my-mu4e-forward-message ()
+    "Forward the selected message."
+    (interactive)
+    (my-mu4e-action-capture)
+    (compose-mail)
+    (mu4e-compose-attach-captured-message))
+
+    (defun my-mu4e-headers-mode-config ()
+    "For use in `mu4e-headers-mode-hook.'"
+    (local-set-key (kbd "f") 'my-mu4e-forward-message))
+    #+END_SRC
+
+**** Bookmarks adicionales
+    #+BEGIN_SRC emacs-lisp
+    (add-to-list 'mu4e-bookmarks
+    (make-mu4e-bookmark
+    :name  "MidEastWire these four weeks"
+    :query "from:mideastwire AND date:30d..now"
+    :key ?M)
+    (make-mu4e-bookmark
+    :name  "MidEastWire last unread"
+    :query "from:mideastwire AND date:30d..now AND flag:unread"
+    :key ?m)	     
+    )
+    #+END_SRC
+
+**** Capturar mensaje en headers view
+    No estoy seguro de que funcione o para qué sirva
+    ;; Keyboard macro to type in 'ac' -- this will capture the message
+    ;; in mu4e-headers-mode.
+    #+BEGIN_SRC emacs-lisp
+    (fset 'my-mu4e-action-capture
+    (lambda (&optional arg) "Keyboard macro." (interactive "p")
+    (kmacro-exec-ring-item (quote ("ac" 0 "%d")) arg)))
+    #+END_SRC
+*** tips a estudiar
+   El 1 ni al caso, salvo que tuviera una imagen que quisiera agregar
+
+   1. In order to embed images into your mail, use the syntax below,
+   [[/full/path/to/your.jpg]]
+
+   2. It's easy to add your own emphasis markup. For example, to render text
+   between "@" in a red color, you can add a function to `org-mime-html-hook':
+
+   (add-hook 'org-mime-html-hook
+   (lambda ()
+   (while (re-search-forward "@\\([^@]*\\)@" nil t)
+   (replace-match "<span style=\"color:red\">\\1</span>"))))
+
+   3. Now the quoted mail uses a modern style (like Gmail), so mail replies
+   looks clean and modern. If you prefer the old style, please set
+   `org-mime-beautify-quoted-mail' to nil.
+
+   4. Please note this program can only embed exported HTML into mail.
+      Org-mode is responsible for rendering HTML.
+
+      For example, see https://github.com/org-mime/org-mime/issues/38
+      The solution is patching org-mode,
+      https://lists.gnu.org/archive/html/emacs-orgmode/2019-11/msg00016.html
+
+** Calculadora de pagos
+   *Desactivada*.  Activar sólo cuando la necesite Funciona super
+   bien. Quisiera que el message fuera copiado al kill ring
+
+   # +BEGIN_SRC emacs-lisp
+     (defun loan-payment-calculator (amount rate years)
+     "Calculate what the payments for a loan of AMOUNT dollars when
+     annual percentage rate is RATE and the term of the loan is YEARS
+     years.  The RATE should expressed in terms of the percentage
+     \(i.e. \'8.9\' instead of \'.089\'\).  The total amount of
+     interest charged over the life of the loan is also given."
+       (interactive "nLoan Amount: \nnAPR: \nnTerm (years): ")
+       (let (
+	     (payment (/ (* amount (/ rate 1200.00)) (- 1 (expt (+ 1 (/ rate 1200.00)) (* years -12.0)))))
+	     )
+	 (message "%s payments of $%.2f. Total interest $%.2f"
+		  (* years 12) payment (- (* payment years 12) amount)))
+       )
+
+     (defalias 'loan 'loan-payment-calculator)
+   # +END_SRC
+** Atajos localizar archivos
+   Estas funciones me ayudan a encontrar archivos, aunque lo mejor
+   sería usar Bookmarks.  En lo que me acostumbro.
+
+   De hecho ya pasé algunos como "~/Library/texmf/bibtex/bib/vib-2.bib"
+   como bookmark.
+
+   Podría traer mi mailrc pero para qué
+
+YA LAS COMENTÉ AHORA FUNCIONAN CON BOOKMARKS
+
+   #+BEGIN_SRC emacs-lisp
+
+ (setq initial-buffer-choice "~/org/gtd.org")
+
+ (defun gtd ()
+    (interactive)
+    (find-file "~/org/gtd.org"))
+;; estas las pasé a muban
+ (defun orgw ()                          ;; Mis plantillas para org-mode
+    (interactive)
+    (find-file "~/org/modelos/plantillasORG.org"))
+;; estas las debería pasar a muban
+ (defun latexw ()                        ;; Mis plantillas para latex-mode
+    (interactive)
+    (find-file "~/org/modelos/plantillaLaTeX.tex"))
+
+ (defun init ()
+    (interactive)
+    (find-file "~/.emacs.d/org-init.org")
+    )
+
+ ;; abre formato carta con membrete del CEAA
+ (defun carta ()
+    (interactive)
+    (find-file 
+     "~/cartas/cartasTeX/cartaMembrete.tex")
+ )
+
+ (defun carta-english ()
+    (interactive)
+    (find-file 
+     "~/cartas/cartasTeX/englMembrete.tex")
+    )
+
+
+ (defun carta-simple ()
+    (interactive)
+    (find-file 
+     "~/cartas/cartasTeX/cartaSimple.tex")
+ )
+
+
+ (defun carta-poder ()
+    (interactive)
+    (find-file 
+     "~/cartas/cartasTeX/cartaPoder.tex")
+    )
+
+ ;; abre formato cartas
+ (defun carta-estilo ()
+    (interactive)
+    (find-file 
+     "~/Library/texmf/tex/latex/carta-membrete-ceaa.sty")
+ )
+   #+END_SRC
+** Sudoku
+
+#+BEGIN_SRC emacs-lisp
+ (autoload 'sudoku "sudoku" "Start playing sudoku." t)
+#+END_SRC
+   
+
+
